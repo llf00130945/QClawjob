@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QClaw Agent 智能体</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface-hover: #334155;
+    --border: #334155;
+    --accent: #3b82f6;
+    --accent-hover: #2563eb;
+    --text: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --user-msg: #1e3a5f;
+    --agent-msg: #1e293b;
+    --danger: #ef4444;
+    --success: #22c55e;
+    --warning: #eab308;
+    --radius: 12px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* === Header === */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+  }
+
+  .header .avatar {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .header .info { flex: 1; min-width: 0; }
+  .header .info h1 {
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.3;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header .info p {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .header .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: rgba(34,197,94,0.15);
+    color: var(--success);
+    flex-shrink: 0;
+  }
+  .header .status-badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    animation: pulse 2s infinite;
+  }
+  .header .status-badge.offline { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .header .status-badge.offline .dot { background: var(--danger); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* === Agent Switcher === */
+  .agent-switcher {
+    position: relative;
+    flex-shrink: 0;
+  }
+  .agent-switcher .current {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .agent-switcher .current:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .agent-switcher .current .arrow {
+    font-size: 10px;
+    transition: transform 0.2s;
+  }
+  .agent-switcher .current.open .arrow {
+    transform: rotate(180deg);
+  }
+  .agent-switcher .dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    min-width: 220px;
+    z-index: 100;
+    overflow: hidden;
+    display: none;
+  }
+  .agent-switcher .dropdown.show {
+    display: block;
+  }
+  .agent-switcher .dropdown .opt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-left: 3px solid transparent;
+  }
+  .agent-switcher .dropdown .opt:hover {
+    background: var(--surface-hover);
+  }
+  .agent-switcher .dropdown .opt.active {
+    border-left-color: var(--accent);
+    background: rgba(59,130,246,0.08);
+  }
+  .agent-switcher .dropdown .opt .opt-avatar {
+    font-size: 20px;
+    width: 28px;
+    text-align: center;
+  }
+  .agent-switcher .dropdown .opt .opt-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .agent-switcher .dropdown .opt .opt-name {
+    font-size: 13px;
+    color: var(--text);
+  }
+  .agent-switcher .dropdown .opt .opt-id {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  /* === Chat Container === */
+  .chat-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scroll-behavior: smooth;
+  }
+
+  .chat-container::-webkit-scrollbar { width: 6px; }
+  .chat-container::-webkit-scrollbar-track { background: transparent; }
+  .chat-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Message */
+  .message {
+    display: flex;
+    gap: 12px;
+    max-width: 85%;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .message.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+  }
+
+  .message .msg-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .message.agent .msg-avatar {
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  }
+  .message.user .msg-avatar {
+    background: linear-gradient(135deg, #f59e0b, #ef4444);
+  }
+
+  .message .bubble {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    line-height: 1.7;
+    font-size: 14px;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .message.agent .bubble {
+    background: var(--agent-msg);
+    border: 1px solid var(--border);
+    border-top-left-radius: 4px;
+  }
+  .message.user .bubble {
+    background: var(--user-msg);
+    border: 1px solid #2563eb40;
+    border-top-right-radius: 4px;
+    color: #e0f2fe;
+  }
+
+  .message .bubble p { margin: 4px 0; }
+
+  /* === Input Area === */
+  .input-area {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 16px 24px;
+    flex-shrink: 0;
+  }
+
+  .input-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 4px;
+    transition: border-color 0.2s;
+  }
+  .input-wrapper:focus-within { border-color: var(--accent); }
+
+  .input-wrapper textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    padding: 8px 12px;
+    resize: none;
+    min-height: 40px;
+    max-height: 120px;
+    line-height: 1.5;
+  }
+  .input-wrapper textarea::placeholder { color: var(--text-muted); }
+
+  .input-wrapper .send-btn {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .input-wrapper .send-btn:hover { background: var(--accent-hover); }
+  .input-wrapper .send-btn:disabled { background: var(--border); cursor: not-allowed; opacity: 0.5; }
+  .input-wrapper .send-btn svg { width: 20px; height: 20px; }
+
+  /* File upload */
+  .input-wrapper .file-btn {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    font-size: 18px;
+  }
+  .input-wrapper .file-btn:hover { background: var(--surface-hover); color: var(--text); }
+
+  .file-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px 0 12px;
+    margin: 0;
+  }
+  .file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    background: var(--surface-hover);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .file-chip .remove-file { cursor: pointer; opacity: 0.6; font-size: 14px; line-height: 1; margin-left: 2px; }
+  .file-chip .remove-file:hover { opacity: 1; color: var(--danger); }
+  #file-input { display: none; }
+
+  /* === Typing Indicator === */
+  .typing-indicator {
+    display: flex;
+    gap: 12px;
+    max-width: 85%;
+    align-self: flex-start;
+    animation: fadeIn 0.3s ease;
+  }
+  .typing-indicator .msg-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .typing-indicator .bubble {
+    padding: 16px 20px;
+    background: var(--agent-msg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    border-top-left-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .typing-indicator .dot {
+    width: 8px;
+    height: 8px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    animation: typing 1.4s infinite;
+  }
+  .typing-indicator .dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-indicator .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing {
+    0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-4px); }
+  }
+
+  /* === Welcome Screen === */
+  .welcome {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 20px;
+    gap: 24px;
+  }
+  .welcome .icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    box-shadow: 0 8px 32px rgba(59,130,246,0.3);
+  }
+  .welcome h2 { font-size: 20px; font-weight: 600; }
+  .welcome p { color: var(--text-secondary); max-width: 480px; line-height: 1.7; font-size: 14px; }
+  .welcome .suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    max-width: 500px;
+  }
+  .welcome .suggestions button {
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+  .welcome .suggestions button:hover { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.1); }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .header { padding: 10px 16px; }
+    .chat-container { padding: 16px; }
+    .input-area { padding: 12px 16px; }
+    .message { max-width: 92%; }
+  }
+
+  /* Markdown-like styling */
+  .bubble strong { color: #93c5fd; }
+  .bubble code { background: #1e293b; padding: 1px 4px; border-radius: 4px; font-size: 13px; color: #fbbf24; }
+  .bubble pre { background: #0f172a; padding: 12px; border-radius: 8px; overflow-x: auto; margin: 8px 0; border: 1px solid var(--border); }
+  .bubble pre code { background: transparent; padding: 0; color: inherit; }
+  .bubble ul, .bubble ol { padding-left: 20px; margin: 4px 0; }
+  .bubble li { margin: 2px 0; }
+  .bubble h3 { color: #93c5fd; margin: 12px 0 4px; font-size: 15px; }
+  .bubble hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+  /* Clear history button */
+  .clear-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .clear-btn:hover { border-color: var(--danger); color: var(--danger); }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="avatar" id="header-avatar">🏗</div>
+  <div class="info">
+    <h1>
+      <span id="header-name">企业工程管理总监</span>
+      <span class="agent-switcher" id="agent-switcher">
+        <span class="current" onclick="toggleAgentDropdown()">
+          切换 <span class="arrow">▼</span>
+        </span>
+        <div class="dropdown" id="agent-dropdown"></div>
+      </span>
+    </h1>
+    <p id="header-desc">正在加载...</p>
+  </div>
+  <button class="clear-btn" onclick="clearHistory()" title="清空对话">🗑 清空</button>
+  <div class="status-badge" id="status-badge">
+    <span class="dot"></span>
+    <span id="status-text">检查中...</span>
+  </div>
+</header>
+
+<main class="chat-container" id="chat-container">
+  <div class="welcome" id="welcome-screen">
+    <div class="icon" id="welcome-icon">🏗</div>
+    <h2 id="welcome-name">企业工程管理总监</h2>
+    <p id="welcome-desc">加载智能体信息...</p>
+    <div class="suggestions" id="suggestions"></div>
+  </div>
+</main>
+
+<div class="input-area">
+  <div class="file-list" id="file-list"></div>
+  <div class="input-wrapper">
+    <button class="file-btn" id="file-btn" title="上传文件" onclick="document.getElementById('file-input').click()">📎</button>
+    <input type="file" id="file-input" multiple accept=".txt,.pdf,.doc,.docx,.xls,.xlsx,.csv,.json,.md,.xml,.log,.png,.jpg,.jpeg" onchange="handleFiles(this.files)">
+    <textarea id="input" rows="1" placeholder="输入您的问题，按 Enter 发送..." autofocus></textarea>
+    <button class="send-btn" id="send-btn" disabled onclick="sendMessage()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+// === Configuration ===
+const API_BASE = '';
+let isStreaming = false;
+let attachedFiles = [];
+
+// Current agent state
+let currentAgent = { id: '', name: '', avatar: '', systemPrompt: '', description: '' };
+let agentsList = [];
+let messageHistory = [];
+
+// === DOM refs ===
+const chatContainer = document.getElementById('chat-container');
+const welcomeScreen = document.getElementById('welcome-screen');
+const welcomeIcon = document.getElementById('welcome-icon');
+const welcomeName = document.getElementById('welcome-name');
+const welcomeDesc = document.getElementById('welcome-desc');
+const suggestionsEl = document.getElementById('suggestions');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('send-btn');
+const statusBadge = document.getElementById('status-badge');
+const statusText = document.getElementById('status-text');
+const headerAvatar = document.getElementById('header-avatar');
+const headerName = document.getElementById('header-name');
+const headerDesc = document.getElementById('header-desc');
+
+// === Load Agent List ===
+async function loadAgents() {
+  try {
+    const resp = await fetch(API_BASE + '/api/agents');
+    const data = await resp.json();
+    agentsList = data.agents;
+    const defaultId = data.default;
+
+    if (agentsList.length > 0) {
+      const defaultAgent = agentsList.find(function(a) { return a.id === defaultId; }) || agentsList[0];
+      setCurrentAgent(defaultAgent);
+    }
+    renderAgentDropdown();
+  } catch (e) {
+    console.error('Failed to load agents:', e);
+  }
+}
+
+function setCurrentAgent(agent) {
+  currentAgent = agent;
+  
+  // Update header
+  headerAvatar.textContent = agent.avatar;
+  headerName.textContent = agent.name;
+  headerDesc.textContent = getAgentDesc(agent);
+  
+  // Update welcome
+  welcomeIcon.textContent = agent.avatar;
+  welcomeName.textContent = agent.name;
+  welcomeDesc.textContent = getAgentDesc(agent);
+  
+  // Update suggestions
+  renderSuggestions(agent);
+  
+  // Reset message history with new system prompt
+  messageHistory = [{ role: 'system', content: agent.systemPrompt }];
+}
+
+function getAgentDesc(agent) {
+  const descs = {
+    'agent-168feb0f': '30年建筑施工企业工程管理专家，项目进度、安全、质量、成本全方位把控',
+    'agent-2e63987e': '30年大型施工企业技术负责人，鲁班奖专家，创优方案与策划'
+  };
+  return descs[agent.id] || agent.systemPrompt.substring(0, 60) + '...';
+}
+
+function renderSuggestions(agent) {
+  const suggMap = {
+    'agent-168feb0f': [
+      { text: '📋 评估施工进度', msg: '请帮我评估一下这个施工进度计划的合理性' },
+      { text: '🔍 安全隐患排查', msg: '施工现场有哪些常见安全隐患？' },
+      { text: '💰 成本控制优化', msg: '如何优化工程成本控制？' },
+      { text: '✅ 质量管理要点', msg: '请给出项目质量管理的关键要点' }
+    ],
+    'agent-2e63987e': [
+      { text: '🏆 鲁班奖申报流程', msg: '请详细介绍鲁班奖的申报流程和关键节点' },
+      { text: '📋 创优策划方案', msg: '如何编制一份高质量的工程创优策划方案？' },
+      { text: '🔍 创优检查要点', msg: '鲁班奖现场复查的常见检查要点有哪些？' },
+      { text: '📝 优质工程案例', msg: '能否分享一些获得鲁班奖的优质工程案例特点？' }
+    ]
+  };
+  
+  const suggestions = suggMap[agent.id] || [
+    { text: '💬 开始对话', msg: '你好，请介绍一下你自己' }
+  ];
+  
+  suggestionsEl.innerHTML = suggestions.map(function(s) {
+    return '<button onclick="sendQuick(\'' + s.msg.replace(/'/g, "\\'") + '\')">' + s.text + '</button>';
+  }).join('');
+}
+
+function renderAgentDropdown() {
+  const dd = document.getElementById('agent-dropdown');
+  var dropdownOpen = false;
+  
+  dd.innerHTML = agentsList.map(function(a) {
+    var active = a.id === currentAgent.id ? ' active' : '';
+    return '<div class="opt' + active + '" onclick="switchAgent(\'' + a.id + '\')">' +
+      '<span class="opt-avatar">' + a.avatar + '</span>' +
+      '<div class="opt-info">' +
+        '<div class="opt-name">' + a.name + '</div>' +
+        '<div class="opt-id">' + a.id + '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function toggleAgentDropdown() {
+  var dd = document.getElementById('agent-dropdown');
+  var current = document.querySelector('#agent-switcher .current');
+  dd.classList.toggle('show');
+  current.classList.toggle('open');
+}
+
+function switchAgent(agentId) {
+  // Close dropdown
+  document.getElementById('agent-dropdown').classList.remove('show');
+  document.querySelector('#agent-switcher .current').classList.remove('open');
+  
+  if (agentId === currentAgent.id) return;
+  
+  // Find agent
+  var agent = agentsList.find(function(a) { return a.id === agentId; });
+  if (!agent) return;
+  
+  // Clear chat
+  chatContainer.innerHTML = '';
+  var welcomeClone = welcomeScreen.cloneNode(true);
+  chatContainer.appendChild(welcomeScreen);
+  welcomeScreen.style.display = 'flex';
+  
+  // Set new agent
+  setCurrentAgent(agent);
+  
+  // Update dropdown active state
+  renderAgentDropdown();
+  
+  // Add system message
+  addSystemMessage('已切换到 ' + agent.name);
+}
+
+// === Check Gateway Status ===
+fetch(API_BASE + '/api/status')
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.status === 'connected') {
+      statusBadge.className = 'status-badge';
+      statusText.textContent = '已连接';
+    } else {
+      statusBadge.className = 'status-badge offline';
+      statusText.textContent = '未连接';
+    }
+  })
+  .catch(function() {
+    statusBadge.className = 'status-badge offline';
+    statusText.textContent = '后端未启动';
+  });
+
+// === Load agents on load ===
+loadAgents();
+
+// === Input auto-resize ===
+inputEl.addEventListener('input', function() {
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+  sendBtn.disabled = !inputEl.value.trim();
+});
+
+inputEl.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+// Close dropdown on outside click
+document.addEventListener('click', function(e) {
+  var switcher = document.getElementById('agent-switcher');
+  if (switcher && !switcher.contains(e.target)) {
+    document.getElementById('agent-dropdown').classList.remove('show');
+    document.querySelector('#agent-switcher .current').classList.remove('open');
+  }
+});
+
+// === File Handling ===
+function handleFiles(files) {
+  for (var i = 0; i < files.length; i++) {
+    var file = files[i];
+    if (file.size > 10 * 1024 * 1024) {
+      addSystemMessage('\u26A0\uFE0F 文件 "' + file.name + '" 超过10MB，已跳过');
+      continue;
+    }
+    attachedFiles.push(file);
+  }
+  renderFileList();
+  document.getElementById('file-input').value = '';
+}
+
+function removeFile(index) {
+  attachedFiles.splice(index, 1);
+  renderFileList();
+}
+
+function renderFileList() {
+  var list = document.getElementById('file-list');
+  if (attachedFiles.length === 0) {
+    list.innerHTML = '';
+    return;
+  }
+  list.innerHTML = attachedFiles.map(function(f, i) {
+    return '<span class="file-chip">\uD83D\uDCCE ' + f.name + ' <span class="remove-file" onclick="removeFile(' + i + ')">&times;</span></span>';
+  }).join('');
+}
+
+function addSystemMessage(text) {
+  var div = document.createElement('div');
+  div.style.cssText = 'text-align:center;font-size:12px;color:var(--text-muted);padding:4px 0;';
+  div.textContent = text;
+  chatContainer.appendChild(div);
+  scrollToBottom();
+}
+
+function clearHistory() {
+  if (messageHistory.length <= 1 && !chatContainer.querySelector('.message')) return;
+  if (!confirm('确定清空当前对话历史？')) return;
+  
+  // Clear messages but keep welcome
+  var msgs = chatContainer.querySelectorAll('.message, .typing-indicator, .system-message');
+  for (var i = 0; i < msgs.length; i++) {
+    msgs[i].remove();
+  }
+  
+  // Show welcome
+  welcomeScreen.style.display = 'flex';
+  
+  // Reset history
+  messageHistory = [{ role: 'system', content: currentAgent.systemPrompt }];
+  attachedFiles = [];
+  renderFileList();
+  
+  addSystemMessage('对话已清空');
+}
+
+// === Send Message ===
+function sendMessage() {
+  var text = inputEl.value.trim();
+  if ((!text && attachedFiles.length === 0) || isStreaming) return;
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+  sendBtn.disabled = true;
+  doChat(text);
+}
+
+function sendQuick(text) {
+  if (isStreaming) return;
+  sendBtn.disabled = true;
+  doChat(text);
+}
+
+function doChat(text) {
+  isStreaming = true;
+  var agent = currentAgent;
+  
+  // Hide welcome if visible
+  if (welcomeScreen) welcomeScreen.style.display = 'none';
+  
+  // Add user message
+  addMessage(text, 'user', '👤');
+  
+  // Update history
+  messageHistory.push({ role: 'user', content: text });
+  
+  // Show typing indicator
+  var typingEl = showTyping(agent.avatar);
+  
+  var assistantContent = '';
+  
+  // Decide endpoint: with files or without
+  var hasFiles = attachedFiles.length > 0;
+  var fetchPromise;
+  
+  if (hasFiles) {
+    var fileNames = attachedFiles.map(function(f) { return f.name; }).join(', ');
+    addSystemMessage('\uD83D\uDCCE 已上传文件: ' + fileNames);
+    
+    var formData = new FormData();
+    formData.append('message', text || '');
+    formData.append('agentId', agent.id);
+    for (var i = 0; i < attachedFiles.length; i++) {
+      formData.append('files', attachedFiles[i]);
+    }
+    attachedFiles = [];
+    renderFileList();
+    
+    fetchPromise = fetch(API_BASE + '/api/chat-with-file', {
+      method: 'POST',
+      body: formData
+    });
+  } else {
+    fetchPromise = fetch(API_BASE + '/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: messageHistory, agentId: agent.id })
+    });
+  }
+  
+  fetchPromise.then(async function(response) {
+    var reader = response.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      
+      buffer += decoder.decode(result.value, { stream: true });
+      var lines = buffer.split('\n');
+      buffer = lines.pop();
+      
+      for (var j = 0; j < lines.length; j++) {
+        var line = lines[j];
+        if (line.indexOf('data: ') === 0) {
+          var dataStr = line.slice(6).trim();
+          if (dataStr === '[DONE]') continue;
+          try {
+            var parsed = JSON.parse(dataStr);
+            if (parsed.content) {
+              assistantContent += parsed.content;
+              updateTypingOrMessage(typingEl, assistantContent);
+            }
+            if (parsed.error) {
+              console.error('Stream error:', parsed.error);
+            }
+          } catch (e) {}
+        }
+      }
+    }
+    
+    // Final update
+    removeTyping(typingEl);
+    if (assistantContent) {
+      addMessage(assistantContent, 'agent', agent.avatar);
+      messageHistory.push({ role: 'assistant', content: assistantContent });
+    }
+    isStreaming = false;
+    inputEl.focus();
+    
+    // Trim history if too long
+    if (messageHistory.length > 50) {
+      var system = messageHistory[0];
+      messageHistory = [system].concat(messageHistory.slice(-40));
+    }
+  }).catch(function(err) {
+    removeTyping(typingEl);
+    addMessage('抱歉，连接后端服务失败：' + err.message, 'agent', agent.avatar);
+    isStreaming = false;
+  });
+}
+
+// === UI Helpers ===
+function addMessage(content, role, avatarEmoji) {
+  var div = document.createElement('div');
+  div.className = 'message ' + role;
+  
+  var avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = avatarEmoji || (role === 'agent' ? '🏗' : '👤');
+  
+  var bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = content;
+  
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  chatContainer.appendChild(div);
+  scrollToBottom();
+}
+
+function showTyping(avatarEmoji) {
+  var div = document.createElement('div');
+  div.className = 'typing-indicator';
+  div.id = 'typing-' + Date.now();
+  
+  var avatar = document.createElement('div');
+  avatar.className = 'msg-avatar';
+  avatar.textContent = avatarEmoji || '🏗';
+  
+  var bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  for (var i = 0; i < 3; i++) {
+    var dot = document.createElement('span');
+    dot.className = 'dot';
+    bubble.appendChild(dot);
+  }
+  
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  chatContainer.appendChild(div);
+  scrollToBottom();
+  return div;
+}
+
+function updateTypingOrMessage(typingEl, content) {
+  if (!typingEl || !typingEl.parentNode) return;
+  var bubble = typingEl.querySelector('.bubble');
+  if (bubble) {
+    bubble.textContent = content;
+    bubble.style.cssText = bubble.style.cssText + '; white-space: pre-wrap;';
+    scrollToBottom();
+  }
+}
+
+function removeTyping(typingEl) {
+  if (typingEl && typingEl.parentNode) {
+    typingEl.remove();
+  }
+}
+
+function scrollToBottom() {
+  requestAnimationFrame(function() {
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  });
+}
+
+// Focus input on load
+inputEl.focus();
+</script>
+
+</body>
+</html>

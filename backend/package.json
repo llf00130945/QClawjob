@@ -1,0 +1,11 @@
+{
+  "name": "qclaw-agent-frontend",
+  "version": "1.0.0",
+  "description": "企业工程管理总监 - QClaw Agent 前端",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
